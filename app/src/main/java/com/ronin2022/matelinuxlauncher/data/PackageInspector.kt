@@ -12,6 +12,12 @@ class PackageInspector(private val context: Context) {
     fun inspectAll(): List<AppDependency> = listOf(
         inspect(DependencyId.TERMUX, "Termux", TERMUX_PACKAGE, required = true),
         inspect(DependencyId.TERMUX_X11, "Termux:X11", TERMUX_X11_PACKAGE, required = true),
+        inspect(
+            DependencyId.TERMUX_FLOAT,
+            "Termux:Float",
+            TERMUX_FLOAT_PACKAGE,
+            required = false,
+        ),
         inspect(DependencyId.SHIZUKU, "Shizuku", SHIZUKU_PACKAGE, required = false),
     )
 
@@ -49,6 +55,7 @@ class PackageInspector(private val context: Context) {
     companion object {
         const val TERMUX_PACKAGE = "com.termux"
         const val TERMUX_X11_PACKAGE = "com.termux.x11"
+        const val TERMUX_FLOAT_PACKAGE = "com.termux.window"
         const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
     }
 }

@@ -25,6 +25,20 @@ object TermuxContract {
         "com.ronin2022.matelinuxlauncher.action.TERMUX_COMMAND_RESULT"
     const val EXTRA_EXECUTION_ID =
         "com.ronin2022.matelinuxlauncher.extra.EXECUTION_ID"
+    const val EXTRA_RESULT_KIND =
+        "com.ronin2022.matelinuxlauncher.extra.RESULT_KIND"
+
+    const val RESULT_KIND_PROBE = "probe"
+    const val RESULT_KIND_START_X11 = "start_x11"
+    const val RESULT_KIND_STOP_SESSION = "stop_session"
+    const val RESULT_KIND_INSTALL_TERMINAL = "install_terminal"
+    const val RESULT_KIND_START_TERMINAL = "start_terminal"
+    const val RESULT_KIND_INSTALL_GEANY = "install_geany"
+    const val RESULT_KIND_START_GEANY = "start_geany"
+    const val RESULT_KIND_INSTALL_GIMP = "install_gimp"
+    const val RESULT_KIND_START_GIMP = "start_gimp"
+    const val RESULT_KIND_INSTALL_WRITER = "install_writer"
+    const val RESULT_KIND_START_WRITER = "start_writer"
 
     const val BASH_PATH = "/data/data/com.termux/files/usr/bin/bash"
     const val HOME_PATH = "/data/data/com.termux/files/home"

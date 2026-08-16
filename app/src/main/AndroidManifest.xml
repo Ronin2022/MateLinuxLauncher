@@ -6,6 +6,7 @@
     <queries>
         <package android:name="com.termux" />
         <package android:name="com.termux.x11" />
+        <package android:name="com.termux.window" />
         <package android:name="moe.shizuku.privileged.api" />
         <intent>
             <action android:name="com.termux.RUN_COMMAND" />

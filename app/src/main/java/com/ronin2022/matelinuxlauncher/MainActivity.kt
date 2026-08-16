@@ -8,10 +8,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
 import com.ronin2022.matelinuxlauncher.data.PackageInspector
 import com.ronin2022.matelinuxlauncher.termux.TermuxContract
 import com.ronin2022.matelinuxlauncher.ui.MainScreen
 import com.ronin2022.matelinuxlauncher.ui.MateLinuxTheme
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -34,6 +37,20 @@ class MainActivity : ComponentActivity() {
                     },
                     onOpenTermux = { openPackage(PackageInspector.TERMUX_PACKAGE) },
                     onOpenTermuxX11 = { openPackage(PackageInspector.TERMUX_X11_PACKAGE) },
+                    onOpenTermuxFloat = { openPackage(PackageInspector.TERMUX_FLOAT_PACKAGE) },
+                    onStartStableSession = ::startStableSession,
+                    onLaunchXfceTerminal = {
+                        launchLinuxApp(viewModel::startXfceTerminal)
+                    },
+                    onLaunchGeany = {
+                        launchLinuxApp(viewModel::startGeany)
+                    },
+                    onLaunchGimp = {
+                        launchLinuxApp(viewModel::startGimp)
+                    },
+                    onLaunchWriter = {
+                        launchLinuxApp(viewModel::startWriter, openDelayMs = 1_800L)
+                    },
                     onOpenAppSettings = { openAppSettings(packageName) },
                 )
             }
@@ -43,6 +60,35 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refresh()
+    }
+
+    private fun startStableSession() {
+        openPackageIfInstalled(PackageInspector.TERMUX_FLOAT_PACKAGE)
+        lifecycleScope.launch {
+            delay(650L)
+            if (viewModel.startStableX11()) {
+                delay(2_800L)
+                openPackage(PackageInspector.TERMUX_X11_PACKAGE)
+            }
+        }
+    }
+
+    private fun launchLinuxApp(
+        action: () -> Boolean,
+        openDelayMs: Long = 1_100L,
+    ) {
+        openPackageIfInstalled(PackageInspector.TERMUX_FLOAT_PACKAGE)
+        lifecycleScope.launch {
+            delay(450L)
+            if (action()) {
+                delay(openDelayMs)
+                openPackage(PackageInspector.TERMUX_X11_PACKAGE)
+            }
+        }
+    }
+
+    private fun openPackageIfInstalled(targetPackage: String) {
+        packageManager.getLaunchIntentForPackage(targetPackage)?.let(::startActivity)
     }
 
     private fun openPackage(targetPackage: String) {

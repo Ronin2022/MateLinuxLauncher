@@ -13,6 +13,8 @@ class TermuxResultReceiver : BroadcastReceiver() {
         val resultBundle = intent.getBundleExtra(TermuxContract.RESULT_BUNDLE) ?: return
         val result = TermuxCommandResult(
             executionId = intent.getIntExtra(TermuxContract.EXTRA_EXECUTION_ID, -1),
+            kind = intent.getStringExtra(TermuxContract.EXTRA_RESULT_KIND)
+                ?: TermuxContract.RESULT_KIND_PROBE,
             stdout = resultBundle.getString(TermuxContract.RESULT_STDOUT).orEmpty(),
             stderr = resultBundle.getString(TermuxContract.RESULT_STDERR).orEmpty(),
             exitCode = resultBundle.getInt(TermuxContract.RESULT_EXIT_CODE, -1),
@@ -20,7 +22,9 @@ class TermuxResultReceiver : BroadcastReceiver() {
             errorMessage = resultBundle.getString(TermuxContract.RESULT_ERROR_MESSAGE).orEmpty(),
             receivedAtEpochMs = System.currentTimeMillis(),
         )
-        TermuxResultStore(context.applicationContext).save(result)
+        if (result.kind == TermuxContract.RESULT_KIND_PROBE) {
+            TermuxResultStore(context.applicationContext).save(result)
+        }
         TermuxResultBus.publish(result)
     }
 }

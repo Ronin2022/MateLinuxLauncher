@@ -30,7 +30,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ronin2022.matelinuxlauncher.BuildConfig
 import com.ronin2022.matelinuxlauncher.LauncherUiState
 import com.ronin2022.matelinuxlauncher.MainViewModel
+import com.ronin2022.matelinuxlauncher.ManagedActionPhase
 import com.ronin2022.matelinuxlauncher.domain.AppDependency
+import com.ronin2022.matelinuxlauncher.domain.DependencyId
 import com.ronin2022.matelinuxlauncher.domain.DeviceProfile
 import com.ronin2022.matelinuxlauncher.domain.DeviceTuning
 import com.ronin2022.matelinuxlauncher.domain.LinuxRuntimeProbe
@@ -46,6 +48,12 @@ fun MainScreen(
     onRequestTermuxPermission: () -> Unit,
     onOpenTermux: () -> Unit,
     onOpenTermuxX11: () -> Unit,
+    onOpenTermuxFloat: () -> Unit,
+    onStartStableSession: () -> Unit,
+    onLaunchXfceTerminal: () -> Unit,
+    onLaunchGeany: () -> Unit,
+    onLaunchGimp: () -> Unit,
+    onLaunchWriter: () -> Unit,
     onOpenAppSettings: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -70,6 +78,23 @@ fun MainScreen(
                 item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
             }
             item { Header() }
+            item {
+                QuickLaunchCard(
+                    state = state,
+                    onStartStableSession = onStartStableSession,
+                    onOpenTermuxX11 = onOpenTermuxX11,
+                    onOpenTermuxFloat = onOpenTermuxFloat,
+                    onInstallXfceTerminal = viewModel::installXfceTerminal,
+                    onLaunchXfceTerminal = onLaunchXfceTerminal,
+                    onInstallGeany = viewModel::installGeany,
+                    onLaunchGeany = onLaunchGeany,
+                    onInstallGimp = viewModel::installGimp,
+                    onLaunchGimp = onLaunchGimp,
+                    onInstallWriter = viewModel::installLibreOffice,
+                    onLaunchWriter = onLaunchWriter,
+                    onStopSession = viewModel::stopManagedSession,
+                )
+            }
             state.device?.let { item { DeviceCard(it) } }
             item {
                 DependencyCard(
@@ -105,7 +130,7 @@ private fun Header() {
             fontWeight = FontWeight.Bold,
         )
         Text(
-            text = "MRDI-W09 için Linux çalışma ortamı ve renderer hazırlığı",
+            text = "MRDI-W09 için tek dokunuşlu Linux uygulama çalışma alanı",
             style = MaterialTheme.typography.bodyMedium,
         )
         Text(
@@ -113,6 +138,139 @@ private fun Header() {
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun QuickLaunchCard(
+    state: LauncherUiState,
+    onStartStableSession: () -> Unit,
+    onOpenTermuxX11: () -> Unit,
+    onOpenTermuxFloat: () -> Unit,
+    onInstallXfceTerminal: () -> Unit,
+    onLaunchXfceTerminal: () -> Unit,
+    onInstallGeany: () -> Unit,
+    onLaunchGeany: () -> Unit,
+    onInstallGimp: () -> Unit,
+    onLaunchGimp: () -> Unit,
+    onInstallWriter: () -> Unit,
+    onLaunchWriter: () -> Unit,
+    onStopSession: () -> Unit,
+) {
+    val busy = state.managedActionStatus.phase == ManagedActionPhase.RUNNING
+    val floatInstalled = state.dependencies
+        .firstOrNull { it.id == DependencyId.TERMUX_FLOAT }
+        ?.installed == true
+
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            SectionTitle("Tek dokunuşlu Linux")
+            Text(
+                text = "Termux komutlarını elle yazman gerekmez. Huawei profili wakelock, " +
+                    "Termux:Float ve X11 başlangıç sırasını otomatik yönetir.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            KeyValue(
+                "Huawei uyumluluk",
+                if (floatInstalled) "Termux:Float hazır" else "Termux:Float kurulu değil",
+            )
+            Text(
+                text = state.managedActionStatus.message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = when (state.managedActionStatus.phase) {
+                    ManagedActionPhase.ERROR -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurface
+                },
+            )
+            if (busy) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+
+            Button(
+                onClick = onStartStableSession,
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Kararlı X11 oturumu başlat") }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onOpenTermuxFloat,
+                    enabled = floatInstalled && !busy,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Termux:Float") }
+                OutlinedButton(
+                    onClick = onOpenTermuxX11,
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f),
+                ) { Text("X11'i aç") }
+            }
+
+            HorizontalDivider()
+            Text("Linux uygulamaları", fontWeight = FontWeight.SemiBold)
+            AppActionRow(
+                title = "XFCE Terminal",
+                busy = busy,
+                onInstall = onInstallXfceTerminal,
+                onLaunch = onLaunchXfceTerminal,
+            )
+            AppActionRow(
+                title = "Geany",
+                busy = busy,
+                onInstall = onInstallGeany,
+                onLaunch = onLaunchGeany,
+            )
+            AppActionRow(
+                title = "GIMP",
+                busy = busy,
+                onInstall = onInstallGimp,
+                onLaunch = onLaunchGimp,
+            )
+            AppActionRow(
+                title = "LibreOffice Writer",
+                busy = busy,
+                onInstall = onInstallWriter,
+                onLaunch = onLaunchWriter,
+            )
+
+            OutlinedButton(
+                onClick = onStopSession,
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Yönetilen oturumu kapat") }
+        }
+    }
+}
+
+@Composable
+private fun AppActionRow(
+    title: String,
+    busy: Boolean,
+    onInstall: () -> Unit,
+    onLaunch: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = title,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        OutlinedButton(
+            onClick = onInstall,
+            enabled = !busy,
+        ) { Text("Kur") }
+        Button(
+            onClick = onLaunch,
+            enabled = !busy,
+        ) { Text("Aç") }
     }
 }
 
@@ -247,8 +405,7 @@ private fun ShizukuCard(
             SectionTitle("Shizuku yardımcı katmanı")
             Text(state.shizuku?.detail ?: "Durum okunuyor…")
             Text(
-                text = "Shizuku Linux uygulamalarını çalıştırmak için zorunlu değildir; " +
-                    "ileride Android teşhisi ve süreç gözetimi için kullanılacaktır.",
+                text = "Shizuku Linux için zorunlu değildir; ANR ve Android süreç teşhisinde kullanılacaktır.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -328,7 +485,7 @@ private fun RecommendationHeader() {
             fontWeight = FontWeight.Bold,
         )
         Text(
-            text = "Buradaki sonuç seçim değil, bir sonraki kontrollü benchmark sırasıdır.",
+            text = "Donanım hızlandırması ancak kontrollü benchmark sonrasında etkinleştirilecek.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -375,8 +532,8 @@ private fun SecurityCard() {
         ) {
             SectionTitle("Güvenlik sınırı")
             Text(
-                text = "Bu sürüm kullanıcı girdisini shell'e göndermez, paket kurmaz, " +
-                    "dosya silmez ve renderer başlatmaz. Prob yalnızca sabit teknik anahtarlar döndürür.",
+                text = "Kullanıcı metni shell'e gönderilmez. Yalnızca uygulamada sabitlenmiş komutlar " +
+                    "çalıştırılır. Paket kurulumu yalnızca ilgili Kur düğmesine açıkça bastığında yapılır.",
             )
         }
     }

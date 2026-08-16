@@ -23,7 +23,7 @@ data class DeviceProfile(
     val gpu: GpuProfile,
 )
 
-enum class DependencyId { TERMUX, TERMUX_X11, SHIZUKU }
+enum class DependencyId { TERMUX, TERMUX_X11, TERMUX_FLOAT, SHIZUKU }
 
 data class AppDependency(
     val id: DependencyId,

@@ -22,6 +22,7 @@ class TermuxResultStore(context: Context) {
         if (!preferences.contains(KEY_RECEIVED_AT)) return null
         return TermuxCommandResult(
             executionId = preferences.getInt(KEY_EXECUTION_ID, -1),
+            kind = TermuxContract.RESULT_KIND_PROBE,
             stdout = preferences.getString(KEY_STDOUT, "").orEmpty(),
             stderr = preferences.getString(KEY_STDERR, "").orEmpty(),
             exitCode = preferences.getInt(KEY_EXIT_CODE, -1),
