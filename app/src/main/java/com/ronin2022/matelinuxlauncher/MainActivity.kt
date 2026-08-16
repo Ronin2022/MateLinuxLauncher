@@ -63,13 +63,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startStableSession() {
+        if (!viewModel.startStableX11()) return
+
+        // Start the exported Termux service while MateLinuxLauncher is still foreground.
+        // Float is opened immediately afterwards so Huawei keeps the shared Termux UID visible
+        // while the X server warms up.
         openPackageIfInstalled(PackageInspector.TERMUX_FLOAT_PACKAGE)
         lifecycleScope.launch {
-            delay(650L)
-            if (viewModel.startStableX11()) {
-                delay(2_800L)
-                openPackage(PackageInspector.TERMUX_X11_PACKAGE)
-            }
+            delay(2_800L)
+            openPackage(PackageInspector.TERMUX_X11_PACKAGE)
         }
     }
 
@@ -77,13 +79,13 @@ class MainActivity : ComponentActivity() {
         action: () -> Boolean,
         openDelayMs: Long = 1_100L,
     ) {
+        if (!action()) return
+
+        // Same ordering as session startup: submit RUN_COMMAND before our activity is backgrounded.
         openPackageIfInstalled(PackageInspector.TERMUX_FLOAT_PACKAGE)
         lifecycleScope.launch {
-            delay(450L)
-            if (action()) {
-                delay(openDelayMs)
-                openPackage(PackageInspector.TERMUX_X11_PACKAGE)
-            }
+            delay(openDelayMs)
+            openPackage(PackageInspector.TERMUX_X11_PACKAGE)
         }
     }
 
