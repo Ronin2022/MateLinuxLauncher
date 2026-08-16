@@ -88,7 +88,7 @@ internal object FloatBridgeScripts {
             MLL_PROFILE_HOOK
             fi
 
-            cat > "${'$'}PENDING" <<MLL_FLOAT_PENDING
+            cat > "${'$'}PENDING" <<'MLL_FLOAT_PENDING'
             set +e
             export LC_ALL=C
             MLL_DIR="${'$'}HOME/.matelinuxlauncher"
