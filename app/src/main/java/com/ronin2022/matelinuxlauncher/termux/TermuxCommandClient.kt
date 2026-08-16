@@ -19,12 +19,12 @@ class TermuxCommandClient(private val context: Context) {
     fun startStableX11(): Result<Int> = runScript(
         script = FloatBridgeScripts.START_X11_SCRIPT,
         label = "MateLinuxLauncher X11 oturumu",
-        description = "Termux:Float login oturumunu hazırlayıp :1 ekranında yönetilen Termux:X11 sunucusunu oradan başlatır.",
+        description = "Termux:Float login oturumunda X11 sunucusunu ve uygulama dağıtıcısını başlatır.",
         resultKind = TermuxContract.RESULT_KIND_START_X11,
     )
 
     fun stopManagedSession(): Result<Int> = runScript(
-        script = STOP_SESSION_SCRIPT,
+        script = FloatBridgeScripts.STOP_SESSION_SCRIPT,
         label = "MateLinuxLauncher oturumu kapat",
         description = "Yalnızca MateLinuxLauncher tarafından kaydedilmiş süreçleri durdurur ve wakelock'u bırakır.",
         resultKind = TermuxContract.RESULT_KIND_STOP_SESSION,
@@ -38,9 +38,9 @@ class TermuxCommandClient(private val context: Context) {
     )
 
     fun startXfceTerminal(): Result<Int> = runScript(
-        script = START_TERMINAL_SCRIPT,
+        script = FloatAppScripts.START_TERMINAL_SCRIPT,
         label = "XFCE Terminal aç",
-        description = "Yönetilen X11 oturumunda XFCE Terminal'i açar.",
+        description = "XFCE Terminal'i çalışan Termux:Float/X11 oturumunda açar.",
         resultKind = TermuxContract.RESULT_KIND_START_TERMINAL,
     )
 
@@ -52,9 +52,9 @@ class TermuxCommandClient(private val context: Context) {
     )
 
     fun startGeany(): Result<Int> = runScript(
-        script = START_GEANY_SCRIPT,
+        script = FloatAppScripts.START_GEANY_SCRIPT,
         label = "Geany aç",
-        description = "Yönetilen X11 oturumunda Geany kod editörünü açar.",
+        description = "Geany'yi çalışan Termux:Float/X11 oturumunda açar.",
         resultKind = TermuxContract.RESULT_KIND_START_GEANY,
     )
 
@@ -66,9 +66,9 @@ class TermuxCommandClient(private val context: Context) {
     )
 
     fun startGimp(): Result<Int> = runScript(
-        script = START_GIMP_SCRIPT,
+        script = FloatAppScripts.START_GIMP_SCRIPT,
         label = "GIMP aç",
-        description = "Yönetilen X11 oturumunda GIMP'i açar.",
+        description = "GIMP'i çalışan Termux:Float/X11 oturumunda açar.",
         resultKind = TermuxContract.RESULT_KIND_START_GIMP,
     )
 
@@ -80,9 +80,9 @@ class TermuxCommandClient(private val context: Context) {
     )
 
     fun startWriter(): Result<Int> = runScript(
-        script = START_WRITER_SCRIPT,
+        script = FloatAppScripts.START_WRITER_SCRIPT,
         label = "LibreOffice Writer aç",
-        description = "Yönetilen X11 oturumunda LibreOffice Writer'ı açar.",
+        description = "LibreOffice Writer'ı çalışan Termux:Float/X11 oturumunda açar.",
         resultKind = TermuxContract.RESULT_KIND_START_WRITER,
     )
 
@@ -159,139 +159,6 @@ class TermuxCommandClient(private val context: Context) {
             (System.currentTimeMillis() and 0x3fffffff).toInt(),
         )
 
-        private val SESSION_HELPERS = """
-            set +e
-            export LC_ALL=C
-            MLL_DIR="${'$'}HOME/.matelinuxlauncher"
-            mkdir -p "${'$'}MLL_DIR"
-
-            pid_alive() {
-              [ -n "${'$'}1" ] && kill -0 "${'$'}1" >/dev/null 2>&1
-            }
-
-            x11_running() {
-              if [ -S "${'$'}TMPDIR/.X11-unix/X1" ]; then
-                return 0
-              fi
-              if [ -f "${'$'}MLL_DIR/x11.pid" ]; then
-                p="${'$'}(cat "${'$'}MLL_DIR/x11.pid" 2>/dev/null)"
-                pid_alive "${'$'}p" && return 0
-              fi
-              return 1
-            }
-
-            ensure_x11() {
-              termux-wake-lock >/dev/null 2>&1 || true
-              if x11_running; then
-                echo "X11_ALREADY_RUNNING=1"
-                return 0
-              fi
-              if ! command -v termux-x11 >/dev/null 2>&1; then
-                echo "MISSING=termux-x11"
-                return 20
-              fi
-              termux-x11 :1 -dpi 240 > "${'$'}MLL_DIR/x11.log" 2>&1 &
-              xpid="${'$'}!"
-              printf '%s\n' "${'$'}xpid" > "${'$'}MLL_DIR/x11.pid"
-              sleep 3
-              if x11_running || pid_alive "${'$'}xpid"; then
-                echo "X11_STARTED=1"
-                return 0
-              fi
-              echo "X11_START_FAILED=1"
-              tail -n 20 "${'$'}MLL_DIR/x11.log" 2>/dev/null
-              rm -f "${'$'}MLL_DIR/x11.pid"
-              return 21
-            }
-
-            verify_app_process() {
-              app_pid="${'$'}1"
-              app_name="${'$'}2"
-              app_log="${'$'}3"
-              sleep 2
-              if pid_alive "${'$'}app_pid"; then
-                echo "APP_STARTED=${'$'}app_name"
-                return 0
-              fi
-              echo "APP_START_FAILED=${'$'}app_name"
-              tail -n 40 "${'$'}app_log" 2>/dev/null
-              return 22
-            }
-        """.trimIndent()
-
-        internal val START_X11_SCRIPT = """
-            ${'$'}SESSION_HELPERS
-            ensure_x11
-            exit ${'$'}?
-        """.trimIndent().replace("${'$'}SESSION_HELPERS", SESSION_HELPERS)
-
-        internal val START_TERMINAL_SCRIPT = """
-            ${'$'}SESSION_HELPERS
-            ensure_x11 || exit ${'$'}?
-            if ! command -v xfce4-terminal >/dev/null 2>&1; then
-              echo "MISSING=xfce4-terminal"
-              exit 20
-            fi
-            log="${'$'}MLL_DIR/xfce4-terminal.log"
-            DISPLAY=:1 xfce4-terminal --disable-server --geometry=110x32+30+30 \
-              > "${'$'}log" 2>&1 &
-            apid="${'$'}!"
-            printf '%s\n' "${'$'}apid" > "${'$'}MLL_DIR/xfce4-terminal.pid"
-            verify_app_process "${'$'}apid" "xfce4-terminal" "${'$'}log"
-            exit ${'$'}?
-        """.trimIndent().replace("${'$'}SESSION_HELPERS", SESSION_HELPERS)
-
-        internal val START_GEANY_SCRIPT = launchAppScript(
-            command = "geany",
-            launch = "dbus-launch --exit-with-session geany",
-            pidFile = "geany.pid",
-            logFile = "geany.log",
-        )
-
-        internal val START_GIMP_SCRIPT = launchAppScript(
-            command = "gimp",
-            launch = "dbus-launch --exit-with-session gimp",
-            pidFile = "gimp.pid",
-            logFile = "gimp.log",
-        )
-
-        internal val START_WRITER_SCRIPT = """
-            ${'$'}SESSION_HELPERS
-            ensure_x11 || exit ${'$'}?
-            if command -v libreoffice >/dev/null 2>&1; then
-              writer=libreoffice
-            elif command -v soffice >/dev/null 2>&1; then
-              writer=soffice
-            else
-              echo "MISSING=libreoffice"
-              exit 20
-            fi
-            DISPLAY=:1 dbus-launch --exit-with-session "${'$'}writer" --writer \
-              > "${'$'}MLL_DIR/libreoffice-writer.log" 2>&1 &
-            apid="${'$'}!"
-            printf '%s\n' "${'$'}apid" > "${'$'}MLL_DIR/libreoffice-writer.pid"
-            sleep 1
-            echo "APP_STARTED=libreoffice-writer"
-        """.trimIndent().replace("${'$'}SESSION_HELPERS", SESSION_HELPERS)
-
-        internal val STOP_SESSION_SCRIPT = """
-            set +e
-            MLL_DIR="${'$'}HOME/.matelinuxlauncher"
-            rm -f "${'$'}MLL_DIR/float-pending.sh" "${'$'}MLL_DIR/float-pending.sh.running."* 2>/dev/null || true
-            for f in xfce4-terminal.pid geany.pid gimp.pid libreoffice-writer.pid x11.pid; do
-              path="${'$'}MLL_DIR/${'$'}f"
-              [ -f "${'$'}path" ] || continue
-              pid="${'$'}(cat "${'$'}path" 2>/dev/null)"
-              if [ -n "${'$'}pid" ] && kill -0 "${'$'}pid" >/dev/null 2>&1; then
-                kill "${'$'}pid" >/dev/null 2>&1 || true
-              fi
-              rm -f "${'$'}path"
-            done
-            am broadcast -a com.termux.x11.ACTION_STOP -p com.termux.x11 >/dev/null 2>&1 || true
-            termux-wake-unlock >/dev/null 2>&1 || true
-            echo "SESSION_STOPPED=1"
-        """.trimIndent()
-
         internal val SAFE_PROBE_SCRIPT = """
             set +e
             export LC_ALL=C
@@ -335,26 +202,6 @@ class TermuxCommandClient(private val context: Context) {
               emit ALLOW_EXTERNAL_APPS 0
             fi
         """.trimIndent()
-
-        private fun launchAppScript(
-            command: String,
-            launch: String,
-            pidFile: String,
-            logFile: String,
-        ): String = """
-            ${'$'}SESSION_HELPERS
-            ensure_x11 || exit ${'$'}?
-            if ! command -v $command >/dev/null 2>&1; then
-              echo "MISSING=$command"
-              exit 20
-            fi
-            log="${'$'}MLL_DIR/$logFile"
-            DISPLAY=:1 $launch > "${'$'}log" 2>&1 &
-            apid="${'$'}!"
-            printf '%s\n' "${'$'}apid" > "${'$'}MLL_DIR/$pidFile"
-            verify_app_process "${'$'}apid" "$command" "${'$'}log"
-            exit ${'$'}?
-        """.trimIndent().replace("${'$'}SESSION_HELPERS", SESSION_HELPERS)
 
         private fun installPackageScript(packageName: String, logName: String): String = """
             set +e
