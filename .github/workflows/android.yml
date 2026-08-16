@@ -30,6 +30,27 @@ jobs:
           path: ~/.android/debug.keystore
           key: matelinuxlauncher-uat-debug-keystore-v1
 
+      - name: Verify UAT signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="108DB346F0A51443C1361F6F4C41F710306AF8E809A3DE12FD649D0BC6EA9C39"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            echo "UAT debug keystore cache is missing; refusing to create an APK with a new signature."
+            exit 1
+          fi
+          actual="$(LC_ALL=C keytool -list -v \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey \
+            | awk '/SHA256:/{print $2; exit}' \
+            | tr -d ':')"
+          if [ "$actual" != "$expected" ]; then
+            echo "Signing certificate drift: expected $expected, got $actual"
+            exit 1
+          fi
+          printf '%s\n' "$actual" > signing-certificate-sha256.txt
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
@@ -47,5 +68,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: MateLinuxLauncher-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            signing-certificate-sha256.txt
           if-no-files-found: error
