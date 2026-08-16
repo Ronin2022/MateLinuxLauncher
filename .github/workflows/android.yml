@@ -30,40 +30,27 @@ jobs:
         with:
           path: ~/.android/matelinuxlauncher-uat-v2.keystore
           key: matelinuxlauncher-uat-signing-v2
+          fail-on-cache-miss: true
 
-      - name: Ensure stable UAT signing key
+      - name: Verify stable UAT signing identity
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.android"
+          expected="0F8AF2D363FFA63160A2F5D7717475DD56932030464822AD840A7B53C6BB0DD3"
           key="$HOME/.android/matelinuxlauncher-uat-v2.keystore"
-          if [ ! -f "$key" ]; then
-            keytool -genkeypair \
-              -keystore "$key" \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=MateLinuxLauncher UAT,O=Ronin2022,C=TR"
-          fi
-          cp "$key" "$HOME/.android/debug.keystore"
-          fingerprint="$(LC_ALL=C keytool -list -v \
+          test -f "$key"
+          actual="$(LC_ALL=C keytool -list -v \
             -keystore "$key" \
             -storepass android \
             -alias androiddebugkey \
             | awk '/SHA256:/{print $2; exit}' \
             | tr -d ':')"
-          test -n "$fingerprint"
-          printf '%s\n' "$fingerprint" | tee signing-certificate-sha256.txt
-
-      - name: Persist stable UAT signing key
-        if: steps.uat-signing-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.android/matelinuxlauncher-uat-v2.keystore
-          key: matelinuxlauncher-uat-signing-v2
+          if [ "$actual" != "$expected" ]; then
+            echo "Signing certificate drift: expected $expected, got $actual"
+            exit 1
+          fi
+          cp "$key" "$HOME/.android/debug.keystore"
+          printf '%s\n' "$actual" | tee signing-certificate-sha256.txt
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
