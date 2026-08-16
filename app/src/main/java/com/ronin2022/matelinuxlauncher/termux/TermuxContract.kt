@@ -31,6 +31,8 @@ object TermuxContract {
     const val RESULT_KIND_PROBE = "probe"
     const val RESULT_KIND_START_X11 = "start_x11"
     const val RESULT_KIND_STOP_SESSION = "stop_session"
+    const val RESULT_KIND_FORCE_RESET = "force_reset"
+    const val RESULT_KIND_INSTALL_PROGRESS = "install_progress"
     const val RESULT_KIND_INSTALL_TERMINAL = "install_terminal"
     const val RESULT_KIND_START_TERMINAL = "start_terminal"
     const val RESULT_KIND_INSTALL_GEANY = "install_geany"
