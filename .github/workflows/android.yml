@@ -1,0 +1,75 @@
+name: Android CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Restore stable UAT signing key
+        id: uat-signing-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.android/matelinuxlauncher-uat-v2.keystore
+          key: matelinuxlauncher-uat-signing-v2
+          fail-on-cache-miss: true
+
+      - name: Verify stable UAT signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="0F8AF2D363FFA63160A2F5D7717475DD56932030464822AD840A7B53C6BB0DD3"
+          key="$HOME/.android/matelinuxlauncher-uat-v2.keystore"
+          test -f "$key"
+          actual="$(LC_ALL=C keytool -list -v \
+            -keystore "$key" \
+            -storepass android \
+            -alias androiddebugkey \
+            | awk '/SHA256:/{print $2; exit}' \
+            | tr -d ':')"
+          if [ "$actual" != "$expected" ]; then
+            echo "Signing certificate drift: expected $expected, got $actual"
+            exit 1
+          fi
+          cp "$key" "$HOME/.android/debug.keystore"
+          printf '%s\n' "$actual" | tee signing-certificate-sha256.txt
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-36
+
+      - name: Set up Gradle 9.5
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Test, lint and assemble
+        run: gradle --no-daemon testDebugUnitTest lintDebug assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MateLinuxLauncher-debug
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            signing-certificate-sha256.txt
+          if-no-files-found: error
