@@ -16,10 +16,18 @@ class TermuxCommandClient(private val context: Context) {
         resultKind = TermuxContract.RESULT_KIND_PROBE,
     )
 
-    fun startStableX11(): Result<Int> = runScript(
-        script = FloatBridgeScripts.START_X11_SCRIPT,
-        label = "MateLinuxLauncher X11 oturumu",
-        description = "Termux:Float login oturumunda X11 sunucusunu ve uygulama dağıtıcısını başlatır.",
+    fun startStableX11(legacyDrawing: Boolean): Result<Int> = runScript(
+        script = if (legacyDrawing) {
+            FloatBridgeScripts.START_X11_LEGACY_SCRIPT
+        } else {
+            FloatBridgeScripts.START_X11_SCRIPT
+        },
+        label = if (legacyDrawing) {
+            "MateLinuxLauncher X11 legacy oturumu"
+        } else {
+            "MateLinuxLauncher X11 oturumu"
+        },
+        description = "Termux:Float login oturumunda X11, pencere yöneticisi ve uygulama dağıtıcısını başlatır.",
         resultKind = TermuxContract.RESULT_KIND_START_X11,
     )
 
@@ -30,8 +38,30 @@ class TermuxCommandClient(private val context: Context) {
         resultKind = TermuxContract.RESULT_KIND_STOP_SESSION,
     )
 
+    fun forceResetEnvironment(): Result<Int> = runScript(
+        script = FloatBridgeScripts.FORCE_RESET_SCRIPT,
+        label = "MateLinuxLauncher test ortamını zorla sıfırla",
+        description = "Termux:X11 testlerinden kalmış bilinen sahipsiz GUI süreçlerini ve geçici oturum durumunu temizler.",
+        resultKind = TermuxContract.RESULT_KIND_FORCE_RESET,
+    )
+
+    fun readInstallProgress(): Result<Int> = runScript(
+        script = """
+            file="${'$'}HOME/.matelinuxlauncher/install-progress.txt"
+            if [ -f "${'$'}file" ]; then
+              cat "${'$'}file"
+            else
+              printf 'stage=Başlatılıyor\npercent=\nmessage=Termux hazırlanıyor\n'
+            fi
+        """.trimIndent(),
+        label = "Kurulum ilerlemesini oku",
+        description = "Yalnızca MateLinuxLauncher'ın kendi kurulum ilerleme dosyasını okur.",
+        resultKind = TermuxContract.RESULT_KIND_INSTALL_PROGRESS,
+    )
+
     fun installXfceTerminal(): Result<Int> = installPackages(
-        packageNames = listOf("gsettings-desktop-schemas", "xfce4-terminal"),
+        packageNames = GUI_RUNTIME_PACKAGES + "xfce4-terminal",
+        displayName = "XFCE Terminal",
         logName = "install-xfce4-terminal.log",
         resultKind = TermuxContract.RESULT_KIND_INSTALL_TERMINAL,
         label = "XFCE Terminal kur",
@@ -45,7 +75,8 @@ class TermuxCommandClient(private val context: Context) {
     )
 
     fun installGeany(): Result<Int> = installPackages(
-        packageNames = listOf("geany"),
+        packageNames = GUI_RUNTIME_PACKAGES + "geany",
+        displayName = "Geany",
         logName = "install-geany.log",
         resultKind = TermuxContract.RESULT_KIND_INSTALL_GEANY,
         label = "Geany kur",
@@ -59,7 +90,8 @@ class TermuxCommandClient(private val context: Context) {
     )
 
     fun installGimp(): Result<Int> = installPackages(
-        packageNames = listOf("gimp"),
+        packageNames = GUI_RUNTIME_PACKAGES + "gimp",
+        displayName = "GIMP",
         logName = "install-gimp.log",
         resultKind = TermuxContract.RESULT_KIND_INSTALL_GIMP,
         label = "GIMP kur",
@@ -73,7 +105,8 @@ class TermuxCommandClient(private val context: Context) {
     )
 
     fun installLibreOffice(): Result<Int> = installPackages(
-        packageNames = listOf("libreoffice"),
+        packageNames = GUI_RUNTIME_PACKAGES + "libreoffice",
+        displayName = "LibreOffice",
         logName = "install-libreoffice.log",
         resultKind = TermuxContract.RESULT_KIND_INSTALL_WRITER,
         label = "LibreOffice kur",
@@ -88,13 +121,14 @@ class TermuxCommandClient(private val context: Context) {
 
     private fun installPackages(
         packageNames: List<String>,
+        displayName: String,
         logName: String,
         resultKind: String,
         label: String,
     ): Result<Int> = runScript(
-        script = installPackageScript(packageNames, logName),
+        script = installPackageScript(packageNames.distinct(), displayName, logName),
         label = label,
-        description = "${packageNames.joinToString()} paketlerini Termux X11 deposundan kurar. Çıktı yerel log dosyasına yazılır.",
+        description = "${packageNames.distinct().joinToString()} paketlerini Termux X11 deposundan kurar ve gerçek APT aşamasını yerel ilerleme dosyasına yazar.",
         resultKind = resultKind,
     )
 
@@ -159,6 +193,11 @@ class TermuxCommandClient(private val context: Context) {
             (System.currentTimeMillis() and 0x3fffffff).toInt(),
         )
 
+        private val GUI_RUNTIME_PACKAGES = listOf(
+            "gsettings-desktop-schemas",
+            "xfwm4",
+        )
+
         internal val SAFE_PROBE_SCRIPT = """
             set +e
             export LC_ALL=C
@@ -203,9 +242,14 @@ class TermuxCommandClient(private val context: Context) {
             fi
         """.trimIndent()
 
-        private fun installPackageScript(packageNames: List<String>, logName: String): String {
+        private fun installPackageScript(
+            packageNames: List<String>,
+            displayName: String,
+            logName: String,
+        ): String {
             require(packageNames.isNotEmpty())
             require(packageNames.all { it.matches(Regex("[a-z0-9+.-]+")) })
+            require(displayName.matches(Regex("[A-Za-z0-9 .:+_-]+")))
             val packages = packageNames.joinToString(" ")
             val installedMarker = packageNames.joinToString(",")
 
@@ -215,18 +259,65 @@ class TermuxCommandClient(private val context: Context) {
                 MLL_DIR="${'$'}HOME/.matelinuxlauncher"
                 mkdir -p "${'$'}MLL_DIR"
                 LOG="${'$'}MLL_DIR/$logName"
+                PROGRESS="${'$'}MLL_DIR/install-progress.txt"
+
+                write_progress() {
+                  stage="${'$'}1"
+                  percent="${'$'}2"
+                  shift 2
+                  message="${'$'}*"
+                  message="${'$'}(printf '%s' "${'$'}message" | tr '\r\n' '  ')"
+                  tmp="${'$'}PROGRESS.tmp.${'$'}${'$'}"
+                  printf 'stage=%s\npercent=%s\nmessage=%s\n' \
+                    "${'$'}stage" "${'$'}percent" "${'$'}message" > "${'$'}tmp"
+                  mv "${'$'}tmp" "${'$'}PROGRESS"
+                }
+
+                write_progress "Hazırlanıyor" "" "$displayName için X11 deposu kontrol ediliyor"
                 pkg install x11-repo -y > "${'$'}LOG" 2>&1
                 repo_rc="${'$'}?"
                 if [ "${'$'}repo_rc" -ne 0 ]; then
+                  write_progress "Hata" "" "x11-repo hazırlanamadı"
                   tail -n 30 "${'$'}LOG" 2>/dev/null
                   exit "${'$'}repo_rc"
                 fi
-                pkg install $packages -y >> "${'$'}LOG" 2>&1
-                rc="${'$'}?"
-                tail -n 30 "${'$'}LOG" 2>/dev/null
-                if [ "${'$'}rc" -eq 0 ]; then
-                  echo "PACKAGES_INSTALLED=$installedMarker"
+
+                write_progress "Depo güncelleniyor" "" "Paket listeleri yenileniyor"
+                apt-get update >> "${'$'}LOG" 2>&1
+                update_rc="${'$'}?"
+                if [ "${'$'}update_rc" -ne 0 ]; then
+                  write_progress "Hata" "" "Paket listeleri güncellenemedi"
+                  tail -n 30 "${'$'}LOG" 2>/dev/null
+                  exit "${'$'}update_rc"
                 fi
+
+                write_progress "Paketler hazırlanıyor" "0" "$displayName bağımlılıkları hesaplanıyor"
+                apt-get -y \
+                  -o Dpkg::Use-Pty=0 \
+                  -o APT::Status-Fd=3 \
+                  install $packages \
+                  3> >(
+                    while IFS=: read -r kind item percent message; do
+                      case "${'$'}kind" in
+                        dlstatus) stage="İndiriliyor" ;;
+                        pmstatus) stage="Kuruluyor" ;;
+                        pmerror) stage="Hata" ;;
+                        *) stage="İşleniyor" ;;
+                      esac
+                      pct="${'$'}{percent%%.*}"
+                      case "${'$'}pct" in ''|*[!0-9]*) pct="" ;; esac
+                      write_progress "${'$'}stage" "${'$'}pct" "${'$'}message"
+                    done
+                  ) >> "${'$'}LOG" 2>&1
+                rc="${'$'}?"
+
+                if [ "${'$'}rc" -eq 0 ]; then
+                  write_progress "Tamamlandı" "100" "$displayName kullanıma hazır"
+                  echo "PACKAGES_INSTALLED=$installedMarker"
+                else
+                  write_progress "Hata" "" "$displayName kurulumu tamamlanamadı"
+                fi
+                tail -n 30 "${'$'}LOG" 2>/dev/null
                 exit "${'$'}rc"
             """.trimIndent()
         }
