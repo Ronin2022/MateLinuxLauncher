@@ -19,6 +19,7 @@ import com.ronin2022.matelinuxlauncher.domain.ProbeStatus
 import com.ronin2022.matelinuxlauncher.domain.RendererRecommendation
 import com.ronin2022.matelinuxlauncher.domain.RendererRecommendationEngine
 import com.ronin2022.matelinuxlauncher.domain.ShizukuStatus
+import com.ronin2022.matelinuxlauncher.termux.InstallProgressParser
 import com.ronin2022.matelinuxlauncher.termux.TermuxCommandClient
 import com.ronin2022.matelinuxlauncher.termux.TermuxCommandResult
 import com.ronin2022.matelinuxlauncher.termux.TermuxContract
@@ -38,6 +39,7 @@ import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
 
 enum class ManagedActionPhase { IDLE, RUNNING, SUCCESS, ERROR }
+enum class X11DrawingMode { STANDARD, LEGACY }
 
 data class ManagedActionStatus(
     val phase: ManagedActionPhase = ManagedActionPhase.IDLE,
@@ -45,6 +47,10 @@ data class ManagedActionStatus(
     val executionId: Int? = null,
     val startedAtEpochMs: Long = 0L,
     val timeoutMs: Long = 0L,
+    val isInstallation: Boolean = false,
+    val progressStage: String? = null,
+    val progressPercent: Int? = null,
+    val progressDetail: String? = null,
 )
 
 data class LauncherUiState(
@@ -58,6 +64,7 @@ data class LauncherUiState(
     val tuning: DeviceTuning? = null,
     val recommendations: List<RendererRecommendation> = emptyList(),
     val managedActionStatus: ManagedActionStatus = ManagedActionStatus(),
+    val x11DrawingMode: X11DrawingMode = X11DrawingMode.STANDARD,
     val transientMessage: String? = null,
 )
 
@@ -150,6 +157,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     runtime = runtime,
                 ),
                 managedActionStatus = recoveredManagedStatus,
+                x11DrawingMode = previous.x11DrawingMode,
                 transientMessage = previous.transientMessage,
             )
         }
@@ -189,12 +197,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun startStableX11(): Boolean = executeManaged(
-        startMessage = "Huawei uyumluluk modunda X11 oturumu hazırlanıyor…",
-        timeoutMs = X11_START_TIMEOUT_MS,
-        requireFloat = true,
-        action = termuxClient::startStableX11,
-    )
+    fun setX11DrawingMode(mode: X11DrawingMode) {
+        if (mutableUiState.value.managedActionStatus.phase == ManagedActionPhase.RUNNING) return
+        mutableUiState.update { it.copy(x11DrawingMode = mode) }
+    }
+
+    fun startStableX11(): Boolean {
+        val mode = mutableUiState.value.x11DrawingMode
+        return executeManaged(
+            startMessage = if (mode == X11DrawingMode.LEGACY) {
+                "Huawei uyumluluk modunda Legacy X11 oturumu hazırlanıyor…"
+            } else {
+                "Huawei uyumluluk modunda Standart X11 oturumu hazırlanıyor…"
+            },
+            timeoutMs = X11_START_TIMEOUT_MS,
+            requireFloat = true,
+            action = { termuxClient.startStableX11(mode == X11DrawingMode.LEGACY) },
+        )
+    }
 
     fun stopManagedSession(): Boolean = executeManaged(
         startMessage = "MateLinuxLauncher oturumu kapatılıyor…",
@@ -203,9 +223,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         action = termuxClient::stopManagedSession,
     )
 
+    fun forceResetEnvironment(): Boolean = executeManaged(
+        startMessage = "Test ortamı zorla sıfırlanıyor…",
+        timeoutMs = FORCE_RESET_TIMEOUT_MS,
+        allowDuringRunning = true,
+        action = termuxClient::forceResetEnvironment,
+    )
+
     fun installXfceTerminal(): Boolean = executeManaged(
-        startMessage = "XFCE Terminal kuruluyor…",
+        startMessage = "XFCE Terminal kurulumu hazırlanıyor…",
         timeoutMs = PACKAGE_INSTALL_TIMEOUT_MS,
+        trackInstallProgress = true,
         action = termuxClient::installXfceTerminal,
     )
 
@@ -217,8 +245,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     fun installGeany(): Boolean = executeManaged(
-        startMessage = "Geany kuruluyor…",
+        startMessage = "Geany kurulumu hazırlanıyor…",
         timeoutMs = PACKAGE_INSTALL_TIMEOUT_MS,
+        trackInstallProgress = true,
         action = termuxClient::installGeany,
     )
 
@@ -230,8 +259,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     fun installGimp(): Boolean = executeManaged(
-        startMessage = "GIMP kuruluyor…",
+        startMessage = "GIMP kurulumu hazırlanıyor…",
         timeoutMs = PACKAGE_INSTALL_TIMEOUT_MS,
+        trackInstallProgress = true,
         action = termuxClient::installGimp,
     )
 
@@ -243,8 +273,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     fun installLibreOffice(): Boolean = executeManaged(
-        startMessage = "LibreOffice kuruluyor; bu paket büyük olduğu için biraz sürebilir…",
+        startMessage = "LibreOffice kurulumu hazırlanıyor…",
         timeoutMs = PACKAGE_INSTALL_TIMEOUT_MS,
+        trackInstallProgress = true,
         action = termuxClient::installLibreOffice,
     )
 
@@ -269,6 +300,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         timeoutMs: Long,
         requireFloat: Boolean = false,
         allowDuringRunning: Boolean = false,
+        trackInstallProgress: Boolean = false,
         action: () -> Result<Int>,
     ): Boolean {
         val state = mutableUiState.value
@@ -310,11 +342,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             executionId = executionId,
                             startedAtEpochMs = now,
                             timeoutMs = timeoutMs,
+                            isInstallation = trackInstallProgress,
                         ),
                         transientMessage = null,
                     )
                 }
                 scheduleManagedTimeout(executionId, timeoutMs)
+                if (trackInstallProgress) scheduleInstallProgressPolling(executionId)
                 true
             },
             onFailure = { error ->
@@ -331,6 +365,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    private fun scheduleInstallProgressPolling(installExecutionId: Int) {
+        viewModelScope.launch {
+            while (true) {
+                delay(INSTALL_PROGRESS_POLL_MS)
+                val current = mutableUiState.value.managedActionStatus
+                if (
+                    current.phase != ManagedActionPhase.RUNNING ||
+                    current.executionId != installExecutionId ||
+                    !current.isInstallation
+                ) break
+                termuxClient.readInstallProgress()
+            }
+        }
+    }
+
     private fun scheduleManagedTimeout(executionId: Int, timeoutMs: Long) {
         viewModelScope.launch {
             delay(timeoutMs)
@@ -343,7 +392,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     state.copy(
                         managedActionStatus = current.copy(
                             phase = ManagedActionPhase.ERROR,
-                            message = "Termux bu işleme zamanında yanıt vermedi. Düğmeler yeniden açıldı; gerekirse Yönetilen oturumu kapat ile temizleyip tekrar deneyebilirsin.",
+                            message = "Termux bu işleme zamanında yanıt vermedi. Düğmeler yeniden açıldı; gerekirse Test ortamını zorla sıfırla ile temizleyebilirsin.",
+                            isInstallation = false,
                         ),
                     )
                 } else {
@@ -376,10 +426,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun handleTermuxResult(result: TermuxCommandResult) {
-        if (result.kind == TermuxContract.RESULT_KIND_PROBE) {
-            handleProbeResult(result)
-        } else {
-            handleManagedResult(result)
+        when (result.kind) {
+            TermuxContract.RESULT_KIND_PROBE -> handleProbeResult(result)
+            TermuxContract.RESULT_KIND_INSTALL_PROGRESS -> handleInstallProgress(result)
+            else -> handleManagedResult(result)
+        }
+    }
+
+    private fun handleInstallProgress(result: TermuxCommandResult) {
+        if (!result.isSuccessful()) return
+        val progress = InstallProgressParser.parse(result.stdout) ?: return
+        mutableUiState.update { state ->
+            val current = state.managedActionStatus
+            if (current.phase != ManagedActionPhase.RUNNING || !current.isInstallation) {
+                state
+            } else {
+                state.copy(
+                    managedActionStatus = current.copy(
+                        progressStage = progress.stage,
+                        progressPercent = progress.percent,
+                        progressDetail = progress.message,
+                    ),
+                )
+            }
         }
     }
 
@@ -446,10 +515,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (!result.isSuccessful()) {
             mutableUiState.update {
                 it.copy(
-                    managedActionStatus = ManagedActionStatus(
+                    managedActionStatus = current.copy(
                         phase = ManagedActionPhase.ERROR,
                         message = managedFailureMessage(result),
-                        executionId = result.executionId,
+                        isInstallation = false,
                     ),
                 )
             }
@@ -458,9 +527,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         val message = when (result.kind) {
             TermuxContract.RESULT_KIND_START_X11 ->
-                "X11 ve Float uygulama dağıtıcısı hazır. Termux:Float'ı açık tut."
+                "X11, xfwm4 ve Float uygulama dağıtıcısı hazır."
             TermuxContract.RESULT_KIND_STOP_SESSION -> "Yönetilen Linux oturumu kapatıldı."
-            TermuxContract.RESULT_KIND_INSTALL_TERMINAL -> "XFCE Terminal kurulumu tamamlandı."
+            TermuxContract.RESULT_KIND_FORCE_RESET -> "Test ortamı zorla sıfırlandı. Yeni oturum başlatabilirsin."
+            TermuxContract.RESULT_KIND_INSTALL_TERMINAL -> "XFCE Terminal ve GUI çalışma bileşenleri kuruldu."
             TermuxContract.RESULT_KIND_START_TERMINAL -> "XFCE Terminal başlatıldı."
             TermuxContract.RESULT_KIND_INSTALL_GEANY -> "Geany kurulumu tamamlandı."
             TermuxContract.RESULT_KIND_START_GEANY -> "Geany başlatıldı."
@@ -471,16 +541,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             else -> "İşlem tamamlandı."
         }
 
+        val idleResult = result.kind in setOf(
+            TermuxContract.RESULT_KIND_STOP_SESSION,
+            TermuxContract.RESULT_KIND_FORCE_RESET,
+        )
         mutableUiState.update {
             it.copy(
                 managedActionStatus = ManagedActionStatus(
-                    phase = if (result.kind == TermuxContract.RESULT_KIND_STOP_SESSION) {
-                        ManagedActionPhase.IDLE
-                    } else {
-                        ManagedActionPhase.SUCCESS
-                    },
+                    phase = if (idleResult) ManagedActionPhase.IDLE else ManagedActionPhase.SUCCESS,
                     message = message,
                     executionId = result.executionId,
+                    progressStage = current.progressStage,
+                    progressPercent = if (current.isInstallation) 100 else null,
+                    progressDetail = current.progressDetail,
                 ),
             )
         }
@@ -492,24 +565,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return when {
             "MISSING=termux-x11" in combined ->
                 "Termux içindeki termux-x11 eş paketi eksik. Güvenli teşhisi yeniden çalıştır."
+            "MISSING=gsettings-desktop-schemas" in combined ->
+                "GTK şemaları eksik. İlgili uygulamada Kur düğmesine bir kez bas."
             "MISSING=xfce4-terminal" in combined ->
                 "XFCE Terminal kurulu değil. Önce Kur düğmesine bas."
             "MISSING=geany" in combined -> "Geany kurulu değil. Önce Kur düğmesine bas."
             "MISSING=gimp" in combined -> "GIMP kurulu değil. Önce Kur düğmesine bas."
             "MISSING=libreoffice" in combined ->
                 "LibreOffice kurulu değil. Önce Kur düğmesine bas."
+            "ORPHAN_X11_DETECTED=" in combined ->
+                "Launcher dışında başlatılmış bir X11 süreci bulundu. Test ortamını zorla sıfırla düğmesine bas, ardından yeni oturum başlat."
             "FLOAT_START_TIMEOUT=1" in combined ->
-                "Termux:Float yeni oturumu zamanında açılmadı. Float'tan exit ile çıkmışsan launcher tekrar temiz bir Float oturumu açabilir; yeniden dene."
+                "Termux:Float yeni oturumu zamanında açılmadı. Test ortamını zorla sıfırla ve yeniden dene."
             "FLOAT_X11_NOT_RUNNING=1" in combined ->
                 "Float içindeki X11 süreci artık çalışmıyor. Önce Kararlı X11 oturumu başlat düğmesini kullan."
             "FLOAT_DISPATCHER_NOT_RUNNING=1" in combined ->
                 "Float uygulama dağıtıcısı kapanmış. Kararlı X11 oturumunu yeniden başlat."
             "FLOAT_APP_TIMEOUT=" in combined ->
-                "Linux uygulaması Float oturumundan zamanında yanıt vermedi. Oturumu kapatıp yeniden başlat."
+                "Linux uygulaması Float oturumundan zamanında yanıt vermedi. Oturumu temizleyip yeniden başlat."
             "APP_PROCESS_DIED=" in combined || "APP_START_FAILED=" in combined ->
-                "Linux uygulaması başlatıldıktan hemen sonra kapandı. Sonraki sürümde uygulama logunu arayüzde göstereceğiz."
-            "X11_START_FAILED=1" in combined ->
-                "X11 başlatılamadı. Oturumu kapatıp yeniden dene; tekrarlarsa tanı toplayacağız."
+                "Linux uygulaması başlatıldıktan hemen sonra kapandı. Uygulama logu yerel MateLinuxLauncher klasöründe tutuldu."
+            "FLOAT_X11_START_FAILED=1" in combined || "X11_START_FAILED=1" in combined ->
+                "X11 başlatılamadı. Test ortamını zorla sıfırla ve yeniden dene."
             else -> result.failureDetail("İşlem başarısız oldu.")
         }
     }
@@ -541,8 +618,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         const val APP_START_TIMEOUT_MS = 25_000L
         const val X11_START_TIMEOUT_MS = 35_000L
         const val STOP_TIMEOUT_MS = 12_000L
-        const val PACKAGE_INSTALL_TIMEOUT_MS = 15 * 60_000L
+        const val FORCE_RESET_TIMEOUT_MS = 15_000L
+        const val PACKAGE_INSTALL_TIMEOUT_MS = 30 * 60_000L
         const val PROBE_TIMEOUT_MS = 20_000L
+        const val INSTALL_PROGRESS_POLL_MS = 1_200L
 
         internal fun recoverStaleManagedAction(
             status: ManagedActionStatus,
@@ -550,13 +629,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ): ManagedActionStatus {
             if (status.phase != ManagedActionPhase.RUNNING) return status
             if (status.startedAtEpochMs <= 0L || status.timeoutMs <= 0L) {
-                return status.copy(
+                return ManagedActionStatus(
                     phase = ManagedActionPhase.ERROR,
-                    message = "Önceki işlem yarım kaldı. Düğmeler yeniden açıldı; gerekirse oturumu temizleyebilirsin.",
+                    message = "Önceki işlem yarım kaldı. Düğmeler yeniden açıldı; gerekirse test ortamını sıfırlayabilirsin.",
                 )
             }
             if (nowEpochMs - status.startedAtEpochMs < status.timeoutMs) return status
-            return status.copy(
+            return ManagedActionStatus(
                 phase = ManagedActionPhase.ERROR,
                 message = "Önceki işlem zaman aşımına uğradı. Düğmeler yeniden açıldı.",
             )
