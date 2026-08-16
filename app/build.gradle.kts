@@ -13,8 +13,8 @@ android {
         applicationId = "com.ronin2022.matelinuxlauncher"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.2.4-alpha01"
+        versionCode = 7
+        versionName = "0.3.0-alpha01"
     }
 
     buildFeatures {
