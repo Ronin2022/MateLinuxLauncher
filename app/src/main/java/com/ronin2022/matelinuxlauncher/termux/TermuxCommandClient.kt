@@ -30,8 +30,8 @@ class TermuxCommandClient(private val context: Context) {
         resultKind = TermuxContract.RESULT_KIND_STOP_SESSION,
     )
 
-    fun installXfceTerminal(): Result<Int> = installPackage(
-        packageName = "xfce4-terminal",
+    fun installXfceTerminal(): Result<Int> = installPackages(
+        packageNames = listOf("gsettings-desktop-schemas", "xfce4-terminal"),
         logName = "install-xfce4-terminal.log",
         resultKind = TermuxContract.RESULT_KIND_INSTALL_TERMINAL,
         label = "XFCE Terminal kur",
@@ -44,8 +44,8 @@ class TermuxCommandClient(private val context: Context) {
         resultKind = TermuxContract.RESULT_KIND_START_TERMINAL,
     )
 
-    fun installGeany(): Result<Int> = installPackage(
-        packageName = "geany",
+    fun installGeany(): Result<Int> = installPackages(
+        packageNames = listOf("geany"),
         logName = "install-geany.log",
         resultKind = TermuxContract.RESULT_KIND_INSTALL_GEANY,
         label = "Geany kur",
@@ -58,8 +58,8 @@ class TermuxCommandClient(private val context: Context) {
         resultKind = TermuxContract.RESULT_KIND_START_GEANY,
     )
 
-    fun installGimp(): Result<Int> = installPackage(
-        packageName = "gimp",
+    fun installGimp(): Result<Int> = installPackages(
+        packageNames = listOf("gimp"),
         logName = "install-gimp.log",
         resultKind = TermuxContract.RESULT_KIND_INSTALL_GIMP,
         label = "GIMP kur",
@@ -72,8 +72,8 @@ class TermuxCommandClient(private val context: Context) {
         resultKind = TermuxContract.RESULT_KIND_START_GIMP,
     )
 
-    fun installLibreOffice(): Result<Int> = installPackage(
-        packageName = "libreoffice",
+    fun installLibreOffice(): Result<Int> = installPackages(
+        packageNames = listOf("libreoffice"),
         logName = "install-libreoffice.log",
         resultKind = TermuxContract.RESULT_KIND_INSTALL_WRITER,
         label = "LibreOffice kur",
@@ -86,15 +86,15 @@ class TermuxCommandClient(private val context: Context) {
         resultKind = TermuxContract.RESULT_KIND_START_WRITER,
     )
 
-    private fun installPackage(
-        packageName: String,
+    private fun installPackages(
+        packageNames: List<String>,
         logName: String,
         resultKind: String,
         label: String,
     ): Result<Int> = runScript(
-        script = installPackageScript(packageName, logName),
+        script = installPackageScript(packageNames, logName),
         label = label,
-        description = "$packageName paketini Termux X11 deposundan kurar. Çıktı yerel log dosyasına yazılır.",
+        description = "${packageNames.joinToString()} paketlerini Termux X11 deposundan kurar. Çıktı yerel log dosyasına yazılır.",
         resultKind = resultKind,
     )
 
@@ -203,25 +203,32 @@ class TermuxCommandClient(private val context: Context) {
             fi
         """.trimIndent()
 
-        private fun installPackageScript(packageName: String, logName: String): String = """
-            set +e
-            export LC_ALL=C
-            MLL_DIR="${'$'}HOME/.matelinuxlauncher"
-            mkdir -p "${'$'}MLL_DIR"
-            LOG="${'$'}MLL_DIR/$logName"
-            pkg install x11-repo -y > "${'$'}LOG" 2>&1
-            repo_rc="${'$'}?"
-            if [ "${'$'}repo_rc" -ne 0 ]; then
-              tail -n 30 "${'$'}LOG" 2>/dev/null
-              exit "${'$'}repo_rc"
-            fi
-            pkg install $packageName -y >> "${'$'}LOG" 2>&1
-            rc="${'$'}?"
-            tail -n 30 "${'$'}LOG" 2>/dev/null
-            if [ "${'$'}rc" -eq 0 ]; then
-              echo "PACKAGE_INSTALLED=$packageName"
-            fi
-            exit "${'$'}rc"
-        """.trimIndent()
+        private fun installPackageScript(packageNames: List<String>, logName: String): String {
+            require(packageNames.isNotEmpty())
+            require(packageNames.all { it.matches(Regex("[a-z0-9+.-]+")) })
+            val packages = packageNames.joinToString(" ")
+            val installedMarker = packageNames.joinToString(",")
+
+            return """
+                set +e
+                export LC_ALL=C
+                MLL_DIR="${'$'}HOME/.matelinuxlauncher"
+                mkdir -p "${'$'}MLL_DIR"
+                LOG="${'$'}MLL_DIR/$logName"
+                pkg install x11-repo -y > "${'$'}LOG" 2>&1
+                repo_rc="${'$'}?"
+                if [ "${'$'}repo_rc" -ne 0 ]; then
+                  tail -n 30 "${'$'}LOG" 2>/dev/null
+                  exit "${'$'}repo_rc"
+                fi
+                pkg install $packages -y >> "${'$'}LOG" 2>&1
+                rc="${'$'}?"
+                tail -n 30 "${'$'}LOG" 2>/dev/null
+                if [ "${'$'}rc" -eq 0 ]; then
+                  echo "PACKAGES_INSTALLED=$installedMarker"
+                fi
+                exit "${'$'}rc"
+            """.trimIndent()
+        }
     }
 }
