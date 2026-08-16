@@ -40,7 +40,7 @@ class MainActivity : ComponentActivity() {
                     onOpenTermuxFloat = { openPackage(PackageInspector.TERMUX_FLOAT_PACKAGE) },
                     onStartStableSession = ::startStableSession,
                     onLaunchXfceTerminal = {
-                        launchLinuxApp(viewModel::startXfceTerminal)
+                        launchLinuxApp(viewModel::startXfceTerminal, openDelayMs = 1_800L)
                     },
                     onLaunchGeany = {
                         launchLinuxApp(viewModel::startGeany)
