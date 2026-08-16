@@ -39,10 +39,10 @@ internal object FloatBridgeScripts {
         if ! grep -Fq "${'$'}HOOK_MARKER" "${'$'}PROFILE" 2>/dev/null; then
           if [ ! -e "${'$'}PROFILE" ]; then
             cat > "${'$'}PROFILE" <<'MLL_PROFILE_BASE'
-if [ -r "$HOME/.bash_login" ]; then
-  . "$HOME/.bash_login"
-elif [ -r "$HOME/.profile" ]; then
-  . "$HOME/.profile"
+if [ -r "${'$'}HOME/.bash_login" ]; then
+  . "${'$'}HOME/.bash_login"
+elif [ -r "${'$'}HOME/.profile" ]; then
+  . "${'$'}HOME/.profile"
 fi
 MLL_PROFILE_BASE
           fi
@@ -51,14 +51,14 @@ MLL_PROFILE_BASE
 
 # >>> MateLinuxLauncher Float bridge >>>
 # Only execute the pending request in Termux:Float. Regular Termux login shells ignore it.
-case "${TERMUX_APP__FILES_DIR:-}" in
+case "${'$'}{TERMUX_APP__FILES_DIR:-}" in
   *com.termux.window*)
-    MLL_PENDING="$HOME/.matelinuxlauncher/float-pending.sh"
-    if [ -f "$MLL_PENDING" ]; then
-      MLL_RUNNING="$MLL_PENDING.running.$$"
-      if mv "$MLL_PENDING" "$MLL_RUNNING" 2>/dev/null; then
-        . "$MLL_RUNNING"
-        rm -f "$MLL_RUNNING"
+    MLL_PENDING="${'$'}HOME/.matelinuxlauncher/float-pending.sh"
+    if [ -f "${'$'}MLL_PENDING" ]; then
+      MLL_RUNNING="${'$'}MLL_PENDING.running.${'$'}${'$'}"
+      if mv "${'$'}MLL_PENDING" "${'$'}MLL_RUNNING" 2>/dev/null; then
+        . "${'$'}MLL_RUNNING"
+        rm -f "${'$'}MLL_RUNNING"
       fi
     fi
     ;;
@@ -72,21 +72,21 @@ MLL_PROFILE_HOOK
         cat > "${'$'}PENDING" <<'MLL_FLOAT_PENDING'
 set +e
 export LC_ALL=C
-MLL_DIR="$HOME/.matelinuxlauncher"
-mkdir -p "$MLL_DIR"
+MLL_DIR="${'$'}HOME/.matelinuxlauncher"
+mkdir -p "${'$'}MLL_DIR"
 
 mll_start_x11_from_float() {
   termux-wake-lock >/dev/null 2>&1 || true
 
   if ! command -v termux-x11 >/dev/null 2>&1; then
-    printf '%s\n' 'MISSING=termux-x11' > "$MLL_DIR/float-start.status"
+    printf '%s\n' 'MISSING=termux-x11' > "${'$'}MLL_DIR/float-start.status"
     return 20
   fi
 
-  termux-x11 :1 -dpi 240 > "$MLL_DIR/x11.log" 2>&1 &
-  xpid=$!
-  printf '%s\n' "$xpid" > "$MLL_DIR/x11.pid"
-  printf '%s\n' 'FLOAT_X11_LAUNCHED=1' > "$MLL_DIR/float-start.status"
+  termux-x11 :1 -dpi 240 > "${'$'}MLL_DIR/x11.log" 2>&1 &
+  xpid=${'$'}!
+  printf '%s\n' "${'$'}xpid" > "${'$'}MLL_DIR/x11.pid"
+  printf '%s\n' 'FLOAT_X11_LAUNCHED=1' > "${'$'}MLL_DIR/float-start.status"
   return 0
 }
 
