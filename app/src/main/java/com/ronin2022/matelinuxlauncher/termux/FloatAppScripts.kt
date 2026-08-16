@@ -8,6 +8,13 @@ internal object FloatAppScripts {
         appName = "xfce4-terminal",
         logFile = "xfce4-terminal.log",
         pidFile = "xfce4-terminal.pid",
+        preflightBody = """
+            if ! dpkg-query -W -f='${'$'}{Status}' gsettings-desktop-schemas 2>/dev/null \
+              | grep -q 'install ok installed'; then
+              echo "MISSING=gsettings-desktop-schemas"
+              exit 20
+            fi
+        """.trimIndent(),
         launchBody = """
             DISPLAY=:1 GDK_BACKEND=x11 xfce4-terminal --disable-server --geometry=110x32+30+30 \
               > "${'$'}log" 2>&1 &
@@ -60,6 +67,7 @@ internal object FloatAppScripts {
         pidFile: String,
         launchBody: String,
         alternateCommand: String? = null,
+        preflightBody: String = "",
     ): String {
         val commandCheck = if (alternateCommand == null) {
             "command -v $requiredCommand >/dev/null 2>&1"
@@ -75,6 +83,7 @@ internal object FloatAppScripts {
             mkdir -p "${'$'}XDG_RUNTIME_DIR"
             chmod 700 "${'$'}XDG_RUNTIME_DIR" 2>/dev/null || true
 
+            $preflightBody
             $launchBody
             apid=${'$'}!
             printf '%s\n' "${'$'}apid" > "${'$'}MLL_DIR/$pidFile"
