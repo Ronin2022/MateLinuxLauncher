@@ -39,7 +39,10 @@ internal object FloatBridgeScripts {
         rm -f "${'$'}MLL_DIR/float-dispatcher.stop"
         rm -rf "${'$'}MLL_DIR/float-queue"
         mkdir -p "${'$'}MLL_DIR/float-queue"
-        am broadcast -a com.termux.x11.ACTION_STOP -p com.termux.x11 >/dev/null 2>&1 || true
+
+        # Never wait for the Android receiver here. On Huawei a wedged X11 activity can make a
+        # synchronous `am broadcast` block the whole RUN_COMMAND operation.
+        (am broadcast -a com.termux.x11.ACTION_STOP -p com.termux.x11 >/dev/null 2>&1 &) || true
 
         # Bash login shells prefer .bash_profile over .bash_login/.profile. If we create it, preserve
         # the startup file bash would otherwise have sourced.
@@ -150,6 +153,7 @@ MLL_FLOAT_PENDING
         done
 
         if [ -f "${'$'}PENDING" ]; then
+          rm -f "${'$'}PENDING"
           echo "Termux:Float yeni oturumu zamanında başlamadı." >&2
           echo "FLOAT_START_TIMEOUT=1"
           exit 30
@@ -174,6 +178,7 @@ MLL_FLOAT_PENDING
     internal val STOP_SESSION_SCRIPT = """
         set +e
         MLL_DIR="${'$'}HOME/.matelinuxlauncher"
+        mkdir -p "${'$'}MLL_DIR"
         touch "${'$'}MLL_DIR/float-dispatcher.stop" 2>/dev/null || true
         rm -f "${'$'}MLL_DIR/float-pending.sh" "${'$'}MLL_DIR/float-pending.sh.running."* 2>/dev/null || true
         rm -rf "${'$'}MLL_DIR/float-queue" 2>/dev/null || true
@@ -188,8 +193,11 @@ MLL_FLOAT_PENDING
           rm -f "${'$'}path"
         done
 
-        am broadcast -a com.termux.x11.ACTION_STOP -p com.termux.x11 >/dev/null 2>&1 || true
-        termux-wake-unlock >/dev/null 2>&1 || true
+        # These are best-effort cleanup signals. Do not let a stuck Android receiver keep the
+        # launcher UI in a permanent RUNNING state.
+        (am broadcast -a com.termux.x11.ACTION_STOP -p com.termux.x11 >/dev/null 2>&1 &) || true
+        (termux-wake-unlock >/dev/null 2>&1 &) || true
         echo "SESSION_STOPPED=1"
+        exit 0
     """.trimIndent()
 }
