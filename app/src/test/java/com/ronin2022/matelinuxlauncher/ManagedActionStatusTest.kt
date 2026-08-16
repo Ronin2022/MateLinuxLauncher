@@ -1,6 +1,7 @@
 package com.ronin2022.matelinuxlauncher
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ManagedActionStatusTest {
@@ -18,7 +19,7 @@ class ManagedActionStatusTest {
         val recovered = MainViewModel.recoverStaleManagedAction(status, 6_001L)
 
         assertEquals(ManagedActionPhase.ERROR, recovered.phase)
-        assertEquals(42, recovered.executionId)
+        assertNull(recovered.executionId)
     }
 
     @Test
