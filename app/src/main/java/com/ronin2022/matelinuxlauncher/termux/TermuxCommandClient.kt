@@ -203,6 +203,20 @@ class TermuxCommandClient(private val context: Context) {
               rm -f "${'$'}MLL_DIR/x11.pid"
               return 21
             }
+
+            verify_app_process() {
+              app_pid="${'$'}1"
+              app_name="${'$'}2"
+              app_log="${'$'}3"
+              sleep 2
+              if pid_alive "${'$'}app_pid"; then
+                echo "APP_STARTED=${'$'}app_name"
+                return 0
+              fi
+              echo "APP_START_FAILED=${'$'}app_name"
+              tail -n 40 "${'$'}app_log" 2>/dev/null
+              return 22
+            }
         """.trimIndent()
 
         internal val START_X11_SCRIPT = """
@@ -211,12 +225,21 @@ class TermuxCommandClient(private val context: Context) {
             exit ${'$'}?
         """.trimIndent().replace("${'$'}SESSION_HELPERS", SESSION_HELPERS)
 
-        internal val START_TERMINAL_SCRIPT = launchAppScript(
-            command = "xfce4-terminal",
-            launch = "dbus-launch --exit-with-session xfce4-terminal --disable-server --geometry=110x32+30+30",
-            pidFile = "xfce4-terminal.pid",
-            logFile = "xfce4-terminal.log",
-        )
+        internal val START_TERMINAL_SCRIPT = """
+            ${'$'}SESSION_HELPERS
+            ensure_x11 || exit ${'$'}?
+            if ! command -v xfce4-terminal >/dev/null 2>&1; then
+              echo "MISSING=xfce4-terminal"
+              exit 20
+            fi
+            log="${'$'}MLL_DIR/xfce4-terminal.log"
+            DISPLAY=:1 xfce4-terminal --disable-server --geometry=110x32+30+30 \
+              > "${'$'}log" 2>&1 &
+            apid="${'$'}!"
+            printf '%s\n' "${'$'}apid" > "${'$'}MLL_DIR/xfce4-terminal.pid"
+            verify_app_process "${'$'}apid" "xfce4-terminal" "${'$'}log"
+            exit ${'$'}?
+        """.trimIndent().replace("${'$'}SESSION_HELPERS", SESSION_HELPERS)
 
         internal val START_GEANY_SCRIPT = launchAppScript(
             command = "geany",
@@ -324,11 +347,12 @@ class TermuxCommandClient(private val context: Context) {
               echo "MISSING=$command"
               exit 20
             fi
-            DISPLAY=:1 $launch > "${'$'}MLL_DIR/$logFile" 2>&1 &
+            log="${'$'}MLL_DIR/$logFile"
+            DISPLAY=:1 $launch > "${'$'}log" 2>&1 &
             apid="${'$'}!"
             printf '%s\n' "${'$'}apid" > "${'$'}MLL_DIR/$pidFile"
-            sleep 1
-            echo "APP_STARTED=$command"
+            verify_app_process "${'$'}apid" "$command" "${'$'}log"
+            exit ${'$'}?
         """.trimIndent().replace("${'$'}SESSION_HELPERS", SESSION_HELPERS)
 
         private fun installPackageScript(packageName: String, logName: String): String = """
