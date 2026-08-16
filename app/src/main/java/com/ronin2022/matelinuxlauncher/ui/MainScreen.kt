@@ -31,6 +31,7 @@ import com.ronin2022.matelinuxlauncher.BuildConfig
 import com.ronin2022.matelinuxlauncher.LauncherUiState
 import com.ronin2022.matelinuxlauncher.MainViewModel
 import com.ronin2022.matelinuxlauncher.ManagedActionPhase
+import com.ronin2022.matelinuxlauncher.X11DrawingMode
 import com.ronin2022.matelinuxlauncher.domain.AppDependency
 import com.ronin2022.matelinuxlauncher.domain.DependencyId
 import com.ronin2022.matelinuxlauncher.domain.DeviceProfile
@@ -82,6 +83,7 @@ fun MainScreen(
                 QuickLaunchCard(
                     state = state,
                     onStartStableSession = onStartStableSession,
+                    onSetX11Mode = viewModel::setX11DrawingMode,
                     onOpenTermuxX11 = onOpenTermuxX11,
                     onOpenTermuxFloat = onOpenTermuxFloat,
                     onInstallXfceTerminal = viewModel::installXfceTerminal,
@@ -93,6 +95,7 @@ fun MainScreen(
                     onInstallWriter = viewModel::installLibreOffice,
                     onLaunchWriter = onLaunchWriter,
                     onStopSession = viewModel::stopManagedSession,
+                    onForceReset = viewModel::forceResetEnvironment,
                 )
             }
             state.device?.let { item { DeviceCard(it) } }
@@ -145,6 +148,7 @@ private fun Header() {
 private fun QuickLaunchCard(
     state: LauncherUiState,
     onStartStableSession: () -> Unit,
+    onSetX11Mode: (X11DrawingMode) -> Unit,
     onOpenTermuxX11: () -> Unit,
     onOpenTermuxFloat: () -> Unit,
     onInstallXfceTerminal: () -> Unit,
@@ -156,8 +160,10 @@ private fun QuickLaunchCard(
     onInstallWriter: () -> Unit,
     onLaunchWriter: () -> Unit,
     onStopSession: () -> Unit,
+    onForceReset: () -> Unit,
 ) {
-    val busy = state.managedActionStatus.phase == ManagedActionPhase.RUNNING
+    val status = state.managedActionStatus
+    val busy = status.phase == ManagedActionPhase.RUNNING
     val floatInstalled = state.dependencies
         .firstOrNull { it.id == DependencyId.TERMUX_FLOAT }
         ?.installed == true
@@ -170,23 +176,76 @@ private fun QuickLaunchCard(
             SectionTitle("Tek dokunuşlu Linux")
             Text(
                 text = "Termux komutlarını elle yazman gerekmez. Huawei profili wakelock, " +
-                    "Termux:Float ve X11 başlangıç sırasını otomatik yönetir.",
+                    "Termux:Float, pencere yöneticisi ve X11 başlangıç sırasını otomatik yönetir.",
                 style = MaterialTheme.typography.bodyMedium,
             )
             KeyValue(
                 "Huawei uyumluluk",
                 if (floatInstalled) "Termux:Float hazır" else "Termux:Float kurulu değil",
             )
+            KeyValue(
+                "X11 çizim modu",
+                if (state.x11DrawingMode == X11DrawingMode.LEGACY) {
+                    "Legacy · uyumluluk testi"
+                } else {
+                    "Standart · varsayılan"
+                },
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = { onSetX11Mode(X11DrawingMode.STANDARD) },
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(if (state.x11DrawingMode == X11DrawingMode.STANDARD) "✓ Standart" else "Standart")
+                }
+                OutlinedButton(
+                    onClick = { onSetX11Mode(X11DrawingMode.LEGACY) },
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(if (state.x11DrawingMode == X11DrawingMode.LEGACY) "✓ Legacy" else "Legacy")
+                }
+            }
+
             Text(
-                text = state.managedActionStatus.message,
+                text = status.message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = when (state.managedActionStatus.phase) {
+                color = when (status.phase) {
                     ManagedActionPhase.ERROR -> MaterialTheme.colorScheme.error
                     else -> MaterialTheme.colorScheme.onSurface
                 },
             )
             if (busy) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                val percent = status.progressPercent
+                if (percent != null) {
+                    LinearProgressIndicator(
+                        progress = { percent.coerceIn(0, 100) / 100f },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                status.progressStage?.let { stage ->
+                    Text(
+                        text = buildString {
+                            append(stage)
+                            percent?.let { append(" · %$it") }
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+                status.progressDetail?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             Button(
@@ -243,6 +302,17 @@ private fun QuickLaunchCard(
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Yönetilen oturumu kapat") }
+
+            OutlinedButton(
+                onClick = onForceReset,
+                enabled = !status.isInstallation,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Test ortamını zorla sıfırla") }
+            Text(
+                text = "Zorla sıfırla yalnızca manuel testlerden kalmış bilinen X11/GUI süreçleri için kurtarma aracıdır.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
