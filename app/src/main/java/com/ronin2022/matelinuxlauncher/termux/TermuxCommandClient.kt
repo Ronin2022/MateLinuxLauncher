@@ -17,9 +17,9 @@ class TermuxCommandClient(private val context: Context) {
     )
 
     fun startStableX11(): Result<Int> = runScript(
-        script = START_X11_SCRIPT,
+        script = FloatBridgeScripts.START_X11_SCRIPT,
         label = "MateLinuxLauncher X11 oturumu",
-        description = "Wakelock açar ve gerekirse :1 ekranında yönetilen Termux:X11 oturumu başlatır.",
+        description = "Termux:Float login oturumunu hazırlayıp :1 ekranında yönetilen Termux:X11 sunucusunu oradan başlatır.",
         resultKind = TermuxContract.RESULT_KIND_START_X11,
     )
 
@@ -277,6 +277,7 @@ class TermuxCommandClient(private val context: Context) {
         internal val STOP_SESSION_SCRIPT = """
             set +e
             MLL_DIR="${'$'}HOME/.matelinuxlauncher"
+            rm -f "${'$'}MLL_DIR/float-pending.sh" "${'$'}MLL_DIR/float-pending.sh.running."* 2>/dev/null || true
             for f in xfce4-terminal.pid geany.pid gimp.pid libreoffice-writer.pid x11.pid; do
               path="${'$'}MLL_DIR/${'$'}f"
               [ -f "${'$'}path" ] || continue
