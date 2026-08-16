@@ -65,12 +65,14 @@ class MainActivity : ComponentActivity() {
     private fun startStableSession() {
         if (!viewModel.startStableX11()) return
 
-        // Start the exported Termux service while MateLinuxLauncher is still foreground.
-        // Float is opened immediately afterwards so Huawei keeps the shared Termux UID visible
-        // while the X server warms up.
-        openPackageIfInstalled(PackageInspector.TERMUX_FLOAT_PACKAGE)
+        // RUN_COMMAND first installs the Float-only login hook and, if necessary, stops an old
+        // Float service. Give that preparation time to finish, then open a brand-new Float login
+        // shell. The hook starts X11 as a child of that visible Float session, matching the live
+        // MRDI-W09 UAT sequence that remained stable.
         lifecycleScope.launch {
-            delay(2_800L)
+            delay(1_800L)
+            openPackageIfInstalled(PackageInspector.TERMUX_FLOAT_PACKAGE)
+            delay(5_000L)
             openPackage(PackageInspector.TERMUX_X11_PACKAGE)
         }
     }
@@ -81,7 +83,8 @@ class MainActivity : ComponentActivity() {
     ) {
         if (!action()) return
 
-        // Same ordering as session startup: submit RUN_COMMAND before our activity is backgrounded.
+        // Application launch commands are still submitted while MateLinuxLauncher is foreground.
+        // Keeping Float visible preserves the shared Termux UID scheduling advantage on Huawei.
         openPackageIfInstalled(PackageInspector.TERMUX_FLOAT_PACKAGE)
         lifecycleScope.launch {
             delay(openDelayMs)
